@@ -11,6 +11,24 @@ const sha256Hex = (data) =>
 const hmac = (key, data) =>
   crypto.createHmac("sha256", key).update(data, "utf8").digest();
 
+// RFC 3986 encoding used by AWS SigV4 for the canonical URI.
+function rfc3986Encode(str) {
+  return encodeURIComponent(str).replace(
+    /[!'()*]/g,
+    (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase()
+  );
+}
+
+// Build the canonical URI: encode each path segment (slashes preserved).
+// For Bedrock the resource path is sent to the wire singly-encoded (e.g. "%3A"),
+// and AWS expects the canonical string to encode it again (e.g. "%253A").
+function canonicalUri(path) {
+  return path
+    .split("/")
+    .map((seg) => rfc3986Encode(seg))
+    .join("/");
+}
+
 function signingKey(secretKey, dateStamp, region, service) {
   const kDate = hmac("AWS4" + secretKey, dateStamp);
   const kRegion = hmac(kDate, region);
@@ -53,7 +71,7 @@ export function signedRequest({ service, region, host, path, body, credentials }
   const payloadHash = sha256Hex(payload);
   const canonicalRequest = [
     "POST",
-    path,
+    canonicalUri(path),
     "", // no query string
     canonicalHeaders,
     signedHeaders,

@@ -39,7 +39,10 @@ async function bedrockGenerate({ system, messages }) {
   }));
 
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const path = `/model/${encodeURIComponent(modelId)}/converse`;
+  // The model id contains a ":" which must be percent-encoded once (%3A) in the
+  // path — and the SAME encoded path must be used for both the request and the
+  // SigV4 canonical string, or the signature will not match.
+  const path = `/model/${modelId.replace(/:/g, "%3A")}/converse`;
 
   const response = await signedRequest({
     service: "bedrock",
