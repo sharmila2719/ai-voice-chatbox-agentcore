@@ -10,6 +10,12 @@ This is a web-based adaptation of the ARM Educations *AI Voice IVR Platform*
 concept. Instead of telephone/SIP calls, it delivers the same ASR → AI → TTS
 loop through the browser so it can be shared with a public URL.
 
+## Architecture & demo
+
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full architecture
+diagram (rendered on GitHub) and a sample demo conversation showing how the
+voice chatbox answers questions.
+
 ## How it works
 
 ```
