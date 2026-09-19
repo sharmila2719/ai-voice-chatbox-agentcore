@@ -1,0 +1,31 @@
+{
+  "name": "ai-voice-chatbox-agentcore",
+  "version": "1.0.0",
+  "description": "AI Voice Chatbox website powered by AgentCore - speech-to-text, NLP/LLM reasoning, and text-to-speech, all in the browser with a Node.js backend.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "tunnel": "node server/tunnel.js"
+  },
+  "keywords": [
+    "voice",
+    "chatbot",
+    "agentcore",
+    "nlp",
+    "ai",
+    "speech-recognition",
+    "text-to-speech"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  },
+  "optionalDependencies": {
+    "localtunnel": "^2.0.2",
+    "node-fetch": "^3.3.2"
+  }
+}
