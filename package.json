@@ -1,7 +1,7 @@
 {
   "name": "ai-voice-chatbox-agentcore",
   "version": "1.0.0",
-  "description": "AI Voice Chatbox website powered by AgentCore - speech-to-text, NLP/LLM reasoning, and text-to-speech, all in the browser with a Node.js backend.",
+  "description": "AI ChatBot powered by AgentCore, NLP, and AWS (Amazon Bedrock) - speech-to-text, AWS LLM reasoning, and text-to-speech, all in the browser with a Node.js backend.",
   "type": "module",
   "main": "server/index.js",
   "scripts": {
@@ -14,6 +14,8 @@
     "chatbot",
     "agentcore",
     "nlp",
+    "aws",
+    "amazon-bedrock",
     "ai",
     "speech-recognition",
     "text-to-speech"
@@ -25,7 +27,6 @@
     "express": "^4.19.2"
   },
   "optionalDependencies": {
-    "localtunnel": "^2.0.2",
-    "node-fetch": "^3.3.2"
+    "localtunnel": "^2.0.2"
   }
 }

@@ -74,8 +74,8 @@ export async function handleTurn({ message, history = [] }) {
 
   return {
     reply:
-      "I understood your question but the AI language model isn't reachable right now. " +
-      "Set LLM_PROVIDER (openai or ollama) in the .env file to enable full AI answers. " +
+      "I understood your question, but the AWS language model (Amazon Bedrock) isn't reachable right now. " +
+      "Add your AWS credentials to the .env file to enable full AI answers. " +
       "Meanwhile I can still tell you the time, the date, or what I can do.",
     intent: "UNKNOWN",
     confidence,

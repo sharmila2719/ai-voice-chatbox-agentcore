@@ -13,6 +13,7 @@
   const textForm = document.getElementById("textForm");
   const textInput = document.getElementById("textInput");
   const speakToggle = document.getElementById("speakToggle");
+  const pauseButton = document.getElementById("pauseButton");
 
   // Conversation history sent to the backend for context.
   const history = [];
@@ -41,6 +42,15 @@
   }
 
   // ── Text-to-speech ──────────────────────────────────────────
+  // Reflect whether the assistant is currently speaking on the pause button.
+  function setSpeakingUI(isSpeaking) {
+    if (!pauseButton) return;
+    pauseButton.disabled = !isSpeaking;
+    pauseButton.classList.toggle("speaking", isSpeaking);
+    const label = pauseButton.querySelector(".pause-label");
+    if (label) label.textContent = isSpeaking ? "Pause" : "Pause";
+  }
+
   function speak(text) {
     if (!speakToggle.checked) return;
     if (!("speechSynthesis" in window)) return;
@@ -50,10 +60,20 @@
       u.rate = 1.02;
       u.pitch = 1.0;
       u.lang = "en-US";
+      u.onstart = () => setSpeakingUI(true);
+      u.onend = () => setSpeakingUI(false);
+      u.onerror = () => setSpeakingUI(false);
       window.speechSynthesis.speak(u);
     } catch (_) {
-      /* ignore synthesis errors */
+      setSpeakingUI(false);
     }
+  }
+
+  // Stop the assistant mid-sentence.
+  function pauseSpeaking() {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    setSpeakingUI(false);
+    setStatus("Ready");
   }
 
   // ── Backend call ────────────────────────────────────────────
@@ -179,6 +199,13 @@
 
   micButton.addEventListener("click", toggleListening);
 
+  if (pauseButton) pauseButton.addEventListener("click", pauseSpeaking);
+
+  // Also stop speech if the user turns off "Speak replies" mid-sentence.
+  speakToggle.addEventListener("change", () => {
+    if (!speakToggle.checked) pauseSpeaking();
+  });
+
   textForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const msg = textInput.value.trim();
@@ -188,6 +215,6 @@
   });
 
   // Greeting
-  addMessage("bot", "Hi! I'm your AI voice assistant. Tap the microphone and ask me anything.");
+  addMessage("bot", "Hi! I'm your AI ChatBot. Tap the microphone and ask me anything.");
   loadHealth();
 })();

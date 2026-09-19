@@ -30,13 +30,12 @@ flowchart TD
         end
     end
 
-    LLMCall -->|HTTP| LLM
+    LLMCall -->|SigV4-signed HTTPS| LLM
 
-    subgraph LLM["LLM Providers (pluggable)"]
-        Poll[Pollinations<br/>free, no key]
-        Groq[Groq / Llama 3.1]
-        OpenAI[OpenAI]
-        Ollama[Ollama local]
+    subgraph LLM["AWS — Amazon Bedrock (Converse API)"]
+        Nova[Amazon Nova]
+        Claude[Anthropic Claude]
+        Llama[Meta Llama]
     end
 
     LLM -->|reply text| Agent
@@ -58,7 +57,8 @@ flowchart TD
 | API            | `server/index.js`     | `POST /api/chat`, `GET /health`, serve the static site     |
 | **NLP**        | `server/nlp.js`       | Classify intent and normalize/tokenize the utterance       |
 | **AgentCore**  | `server/agentcore.js` | Orchestrate: answer locally (time/date) or delegate to LLM |
-| **LLM**        | `server/llm.js`       | Generate answers via a pluggable provider                  |
+| **AWS LLM**    | `server/llm.js`       | Generate answers via Amazon Bedrock (Converse API)         |
+| AWS signing    | `server/awsSigner.js` | Sign Bedrock requests with AWS SigV4 (no SDK)              |
 | Public URL     | `server/tunnel.js`    | Expose the local server on the internet (localtunnel)      |
 
 ## Request flow, step by step
@@ -91,17 +91,23 @@ BOT:  The current time is 1:44:42 pm.
 USER: (speaks) "What is the capital of France and one fact about it?"
 BOT:  Paris is the capital of France, and it's famous for the Eiffel Tower,
       which was originally built as a temporary exhibit for the 1889 World's Fair.
-      [intent: LLM · source: pollinations]  ← answered by the free LLM
+      [intent: LLM · source: bedrock]   ← answered by AWS Amazon Bedrock
 
 USER: (speaks) "Tell me a fun fact about the ocean"
 BOT:  The ocean produces over half of the world's oxygen, most of it from tiny
       drifting plankton rather than large plants.
-      [intent: LLM · source: pollinations]
+      [intent: LLM · source: bedrock]
+
+USER: (bot is mid-sentence) → clicks the Pause button
+BOT:  (stops speaking immediately)
 
 USER: (speaks) "Thank you, goodbye"
 BOT:  Goodbye! Have a great day.
       [intent: GOODBYE · source: builtin]
 ```
+
+The **Pause** button stops the assistant's speech at any time while it is
+talking. It lights up only while the bot is speaking.
 
 ### Try it yourself with the API
 
@@ -120,20 +126,20 @@ Example response:
   "reply": "Paris is the capital of France...",
   "intent": "LLM",
   "confidence": 0,
-  "source": "pollinations"
+  "source": "bedrock"
 }
 ```
 
 `GET /health` reports the active provider:
 
 ```json
-{ "status": "healthy", "llmProvider": "pollinations", "llmEnabled": true }
+{ "status": "healthy", "llmProvider": "bedrock", "llmEnabled": true }
 ```
 
 ## Notes
 
 - Voice input works best in Chrome or Edge (Web Speech API). Typing works everywhere.
-- The default LLM (`pollinations`) is free and needs no key. For higher reliability,
-  set `LLM_PROVIDER=groq` with a free key from https://console.groq.com/keys.
-- If the LLM is ever unreachable, AgentCore falls back to the built-in NLP engine
-  so the chatbox keeps responding.
+- The AI engine is **AWS Amazon Bedrock**. Enable a Bedrock model in your account
+  and add AWS credentials to `.env` (see the README).
+- If Bedrock is ever unreachable, AgentCore falls back to the built-in NLP engine
+  so the ChatBot keeps responding.

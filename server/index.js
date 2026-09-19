@@ -45,8 +45,12 @@ app.post("/api/chat", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log("\n  AI Voice Chatbox (AgentCore) is running");
+  console.log("\n  AI ChatBot (AgentCore + NLP + AWS Bedrock) is running");
   console.log(`  Local:    http://localhost:${PORT}`);
-  console.log(`  LLM:      ${providerName()}${llmEnabled() ? " (enabled)" : " (built-in NLP fallback)"}`);
+  console.log(
+    `  LLM:      ${providerName()}${
+      llmEnabled() ? " (AWS credentials detected)" : " (add AWS credentials to .env — using built-in NLP)"
+    }`
+  );
   console.log(`\n  To get a public URL, run in a second terminal:  npm run tunnel\n`);
 });

@@ -1,162 +1,86 @@
-// llm.js — pluggable LLM providers.
-// Selected via LLM_PROVIDER env: "builtin" (none), "groq", "openai", or "ollama".
-// Each provider exposes async generate({ system, messages }) -> string.
-// "groq" is a FREE cloud LLM (free API key) and is the default recommendation.
+// llm.js — AWS-powered LLM provider.
+// This project uses AWS technologies only: the language model runs on
+// Amazon Bedrock (AWS's managed generative-AI service) via the Converse API.
+// Bedrock is called over HTTPS with AWS SigV4 signing (see awsSigner.js), so it
+// works without the AWS SDK on Node 16+.
+// LLM_PROVIDER=bedrock (default) or "builtin" (offline NLP fallback).
 
-import { getFetch } from "./fetchCompat.js";
+import { signedRequest } from "./awsSigner.js";
 
 const SYSTEM_PROMPT =
-  "You are a friendly AI voice assistant answering over a voice interface. " +
+  "You are a friendly AI assistant answering over a voice interface. " +
   "Keep answers concise and natural for spoken delivery — usually one to three sentences. " +
   "Avoid markdown, bullet points, code blocks, or emojis, since the reply will be read aloud.";
 
-/**
- * OpenAI Chat Completions provider.
- */
-async function openaiGenerate({ system, messages }) {
-  const key = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-  if (!key) throw new Error("OPENAI_API_KEY is not set");
+function awsCredentials() {
+  return {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    sessionToken: process.env.AWS_SESSION_TOKEN || undefined,
+  };
+}
 
-  const fetch = await getFetch();
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
+/**
+ * Amazon Bedrock provider (AWS). Uses the Converse API, which works across
+ * Bedrock models (Amazon Nova, Anthropic Claude, Meta Llama, Mistral, etc.).
+ */
+async function bedrockGenerate({ system, messages }) {
+  const region = process.env.AWS_REGION || "us-east-1";
+  const modelId = process.env.BEDROCK_MODEL_ID || "amazon.nova-lite-v1:0";
+  const creds = awsCredentials();
+  if (!creds.accessKeyId || !creds.secretAccessKey) {
+    throw new Error("AWS credentials are not set (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)");
+  }
+
+  // Bedrock Converse content-block message shape.
+  const converseMessages = messages.map((m) => ({
+    role: m.role === "assistant" ? "assistant" : "user",
+    content: [{ text: m.content }],
+  }));
+
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const path = `/model/${encodeURIComponent(modelId)}/converse`;
+
+  const response = await signedRequest({
+    service: "bedrock",
+    region,
+    host,
+    path,
+    credentials: creds,
+    body: {
+      messages: converseMessages,
+      system: [{ text: system }],
+      inferenceConfig: { maxTokens: 400, temperature: 0.6 },
     },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: system }, ...messages],
-      temperature: 0.6,
-      max_tokens: 300,
-    }),
   });
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`OpenAI request failed (${res.status}): ${detail.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content?.trim() || "";
+  const blocks = response?.output?.message?.content || [];
+  const text = blocks.map((b) => b.text || "").join(" ").trim();
+  if (!text) throw new Error("Bedrock returned an empty response");
+  return text;
 }
 
 /**
- * Pollinations provider — FREE public LLM, no API key / no signup required.
- * Uses the OpenAI-compatible endpoint at text.pollinations.ai.
- * Quality/uptime are lower than paid providers, but it needs zero config.
- */
-async function pollinationsGenerate({ system, messages }) {
-  const model = process.env.POLLINATIONS_MODEL || "openai";
-  const fetch = await getFetch();
-  const res = await fetch("https://text.pollinations.ai/openai", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: system }, ...messages],
-      temperature: 0.6,
-    }),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Pollinations request failed (${res.status}): ${detail.slice(0, 200)}`);
-  }
-
-  // The endpoint may return JSON (OpenAI shape) or, occasionally, plain text.
-  const raw = await res.text();
-  try {
-    const data = JSON.parse(raw);
-    return data?.choices?.[0]?.message?.content?.trim() || raw.trim();
-  } catch {
-    return raw.trim();
-  }
-}
-
-/**
- * Groq provider — FREE cloud LLM with an OpenAI-compatible API.
- * Get a free key at https://console.groq.com/keys
- */
-async function groqGenerate({ system, messages }) {
-  const key = process.env.GROQ_API_KEY;
-  const model = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
-  if (!key) throw new Error("GROQ_API_KEY is not set");
-
-  const fetch = await getFetch();
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: system }, ...messages],
-      temperature: 0.6,
-      max_tokens: 300,
-    }),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Groq request failed (${res.status}): ${detail.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content?.trim() || "";
-}
-
-/**
- * Ollama local LLM provider (matches the PDF's Ollama + Llama3 stack).
- */
-async function ollamaGenerate({ system, messages }) {
-  const base = process.env.OLLAMA_URL || "http://localhost:11434";
-  const model = process.env.OLLAMA_MODEL || "llama3";
-
-  const fetch = await getFetch();
-  const res = await fetch(`${base.replace(/\/$/, "")}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      messages: [{ role: "system", content: system }, ...messages],
-      options: { temperature: 0.6 },
-    }),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Ollama request failed (${res.status}): ${detail.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  return data?.message?.content?.trim() || "";
-}
-
-/**
- * Returns the configured provider name, or "builtin" if none.
- * @returns {"builtin"|"openai"|"ollama"}
+ * Returns the configured provider name, or "builtin".
+ * @returns {"builtin"|"bedrock"}
  */
 export function providerName() {
-  const p = (process.env.LLM_PROVIDER || "builtin").toLowerCase();
-  return ["pollinations", "groq", "openai", "ollama"].includes(p) ? p : "builtin";
+  const p = (process.env.LLM_PROVIDER || "bedrock").toLowerCase();
+  return p === "bedrock" ? "bedrock" : "builtin";
 }
 
 /**
- * Whether a real LLM is configured and usable.
+ * Whether the AWS LLM is configured. Bedrock is "enabled" when static AWS
+ * credentials are present. Reachability/permissions are validated at call time.
  * @returns {boolean}
  */
 export function llmEnabled() {
-  const p = providerName();
-  if (p === "pollinations") return true; // no key needed; reachability checked at call time
-  if (p === "groq") return Boolean(process.env.GROQ_API_KEY);
-  if (p === "openai") return Boolean(process.env.OPENAI_API_KEY);
-  if (p === "ollama") return true; // reachability checked at call time
-  return false;
+  if (providerName() !== "bedrock") return false;
+  return Boolean(process.env.AWS_ACCESS_KEY_ID) && Boolean(process.env.AWS_SECRET_ACCESS_KEY);
 }
 
 /**
- * Generate a reply from the configured LLM.
+ * Generate a reply from the AWS LLM (Amazon Bedrock).
  * @param {{message:string, history?:{role:string, content:string}[]}} input
  * @returns {Promise<string>}
  */
@@ -168,9 +92,6 @@ export async function generateReply({ message, history = [] }) {
   ];
   const payload = { system: SYSTEM_PROMPT, messages };
 
-  if (provider === "pollinations") return pollinationsGenerate(payload);
-  if (provider === "groq") return groqGenerate(payload);
-  if (provider === "openai") return openaiGenerate(payload);
-  if (provider === "ollama") return ollamaGenerate(payload);
-  throw new Error("No LLM provider configured");
+  if (provider === "bedrock") return bedrockGenerate(payload);
+  throw new Error("No AWS LLM provider configured");
 }

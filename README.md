@@ -1,20 +1,26 @@
-# AI Voice Chatbox · AgentCore
+# AI ChatBot · AgentCore + NLP + AWS
 
-A voice-driven AI chatbox that runs as a website. You speak a question, it
-understands you, and it answers back out loud. Built with the latest browser
-speech technologies plus a Node.js **AgentCore** backend that does the NLP/AI
-reasoning, with an optional plug-in to a real LLM (OpenAI or a local Ollama /
-Llama3 model).
+A voice-driven AI ChatBot that runs as a website. You speak a question, it
+understands you, and it answers back out loud. The reasoning is powered by
+**AWS technologies** — the language model runs on **Amazon Bedrock** — while an
+**AgentCore** orchestrator and an **NLP** engine handle intent understanding and
+decide how each turn is answered.
 
 This is a web-based adaptation of the ARM Educations *AI Voice IVR Platform*
 concept. Instead of telephone/SIP calls, it delivers the same ASR → AI → TTS
 loop through the browser so it can be shared with a public URL.
 
+## Core technologies
+
+- **AgentCore** — orchestrator that routes every turn (`server/agentcore.js`)
+- **NLP** — intent classification and understanding (`server/nlp.js`)
+- **AWS — Amazon Bedrock** — the LLM that generates answers (`server/llm.js`,
+  signed via `server/awsSigner.js`)
+
 ## Architecture & demo
 
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full architecture
-diagram (rendered on GitHub) and a sample demo conversation showing how the
-voice chatbox answers questions.
+diagram (rendered on GitHub) and a sample demo conversation.
 
 ## How it works
 
@@ -25,38 +31,49 @@ voice chatbox answers questions.
                  AgentCore backend  ──▶  NLP intent engine
                  (Node.js / Express)      │
                         │                  ├─ built-in rules (time, date, greetings…)
-                        │                  └─ LLM (OpenAI or Ollama) for open questions
+                        │                  └─ AWS Amazon Bedrock for open questions
                         ▼
                  Reply text  ──▶  Browser Text-to-Speech  ──▶  You hear the answer
 ```
 
-| Layer            | Technology                          | Role                                    |
-| ---------------- | ----------------------------------- | --------------------------------------- |
-| Speech-to-Text   | Web Speech API (`SpeechRecognition`) | Convert your voice to text in-browser   |
-| AI / NLP         | AgentCore + intent engine + LLM     | Understand intent, generate the answer  |
-| Text-to-Speech   | Web Speech API (`speechSynthesis`)  | Speak the reply aloud                   |
-| Web server       | Node.js + Express                   | Serve the site, host the `/api/chat` API |
-| Public URL       | localtunnel                         | Share the app on the internet           |
+| Layer            | Technology                           | Role                                     |
+| ---------------- | ------------------------------------ | ---------------------------------------- |
+| Speech-to-Text   | Web Speech API (`SpeechRecognition`) | Convert your voice to text in-browser    |
+| Orchestration    | AgentCore (`server/agentcore.js`)    | Decide how each turn is answered         |
+| NLP              | Intent engine (`server/nlp.js`)      | Classify intent, understand the request  |
+| AI / LLM         | **AWS Amazon Bedrock**               | Generate the natural-language answer     |
+| Text-to-Speech   | Web Speech API (`speechSynthesis`)   | Speak the reply aloud                    |
+| Web server       | Node.js + Express                    | Serve the site, host the `/api/chat` API |
+| Public URL       | localtunnel                          | Share the app on the internet            |
 
 ## Requirements
 
-- Node.js 18 or newer (uses built-in `fetch` and ES modules)
+- Node.js 16 or newer (Amazon Bedrock is called over HTTPS with AWS SigV4
+  signing — no AWS SDK required)
+- An AWS account with **Amazon Bedrock model access** enabled in your region
 - A Chromium browser (Chrome or Edge) for voice input. Typing works everywhere.
 
 ## Setup
 
 ```bash
 npm install
-```
-
-Optionally configure an LLM and settings:
-
-```bash
 cp .env.example .env
-# edit .env
+# edit .env and add your AWS credentials
 ```
 
-Without any config it runs on the **built-in NLP engine** — no API key needed.
+Set your AWS details in `.env`:
+
+```
+LLM_PROVIDER=bedrock
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-key
+AWS_SECRET_ACCESS_KEY=your-secret
+BEDROCK_MODEL_ID=amazon.nova-lite-v1:0
+```
+
+Make sure the chosen `BEDROCK_MODEL_ID` is enabled for your account in the
+Amazon Bedrock console (Model access). Without credentials the app still runs on
+the built-in NLP engine for time/date/greetings and prompts you to add AWS keys.
 
 ## Run
 
@@ -77,42 +94,32 @@ npm run tunnel
 This prints a public `https://…loca.lt` URL you can share. (Any tunnel works —
 ngrok or `cloudflared tunnel --url http://localhost:3000` are fine alternatives.)
 
-## Using a free AI model (recommended)
+## AWS — Amazon Bedrock (the AI engine)
 
-The app is preconfigured for **Groq**, a free cloud LLM (runs Llama 3.1, no
-credit card). Get a free key and paste it in:
+The AI answers are generated by **Amazon Bedrock**, called through its
+**Converse API** over HTTPS with AWS SigV4 request signing (`server/awsSigner.js`).
+No AWS SDK is needed, so it runs on Node 16+.
 
-1. Visit https://console.groq.com/keys and sign in
-2. Create an API key (starts with `gsk_...`)
-3. Put it in `.env`:
+To enable it:
+
+1. In the AWS console, open **Amazon Bedrock → Model access** and enable a model
+   in your region (e.g. Amazon Nova, Anthropic Claude, or Meta Llama).
+2. Create an IAM user/role with `bedrock:InvokeModel` permission and get its
+   access key + secret.
+3. Put them in `.env`:
    ```
-   LLM_PROVIDER=groq
-   GROQ_API_KEY=gsk_your_key_here
-   GROQ_MODEL=llama-3.1-8b-instant
+   LLM_PROVIDER=bedrock
+   AWS_REGION=us-east-1
+   AWS_ACCESS_KEY_ID=AKIA...
+   AWS_SECRET_ACCESS_KEY=...
+   BEDROCK_MODEL_ID=amazon.nova-lite-v1:0
    ```
 4. `npm start`
 
-## Other AI options
-
-Edit `.env`:
-
-**OpenAI**
-```
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-```
-
-**Ollama (local, matches the PDF's Ollama + Llama3 stack)**
-```
-LLM_PROVIDER=ollama
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama3
-```
-Start it first with `ollama serve` and `ollama pull llama3`.
-
-If the LLM is unreachable or errors, AgentCore automatically falls back to the
-built-in NLP engine so the chatbox keeps working.
+Supported credential sources: static keys, temporary keys (`AWS_SESSION_TOKEN`),
+or a shared profile (`AWS_PROFILE`). If Bedrock is unreachable or the model isn't
+enabled, AgentCore automatically falls back to the built-in NLP engine so the
+ChatBot keeps responding.
 
 ## Project structure
 
@@ -121,13 +128,15 @@ built-in NLP engine so the chatbox keeps working.
 ├── public/            # front-end (served as the website)
 │   ├── index.html
 │   ├── styles.css
-│   └── app.js         # speech recognition + TTS + API calls
+│   └── app.js         # speech recognition + TTS + pause + API calls
 ├── server/
 │   ├── index.js       # Express server, /health and /api/chat
-│   ├── agentcore.js   # orchestrator: NLP vs LLM decision
-│   ├── nlp.js         # built-in intent classifier
-│   ├── llm.js         # OpenAI / Ollama providers
+│   ├── agentcore.js   # AgentCore orchestrator: NLP vs AWS LLM decision
+│   ├── nlp.js         # NLP intent classifier
+│   ├── llm.js         # AWS Amazon Bedrock provider
+│   ├── awsSigner.js   # AWS SigV4 request signing (no SDK)
 │   └── tunnel.js      # public URL via localtunnel
+├── docs/ARCHITECTURE.md
 ├── .env.example
 └── package.json
 ```
